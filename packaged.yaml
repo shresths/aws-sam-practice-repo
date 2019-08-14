@@ -1,0 +1,207 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'sam-app
+
+  Sample SAM Template for sam-app
+
+  '
+Globals:
+  Function:
+    Timeout: 3
+Outputs:
+  DemoApi:
+    Description: API Gateway endpoint URL for Prod stage for Hello World function
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/
+  DemoFunction:
+    Description: Hello World Lambda Function ARN
+    Value:
+      Fn::GetAtt:
+      - DemoFunction
+      - Arn
+  IpapiValue:
+    Value:
+      Fn::Sub: https://${apiGateway}.execute-api.${AWS::Region}.amazonaws.com/call/
+  lambdaArn:
+    Value:
+      Fn::GetAtt:
+      - lambdaFunction
+      - Arn
+Parameters:
+  apiGatewayStageName:
+    AllowedPattern: ^[a-z0-9]+$
+    Default: call
+    Type: String
+  lambdaFunctionName:
+    AllowedPattern: ^[a-zA-Z0-9]+[a-zA-Z0-9-]+[a-zA-Z0-9]+$
+    Default: my-function
+    Type: String
+Resources:
+  DemoFunction:
+    Properties:
+      CodeUri: s3://cloud-stack-demo/7b7d0cfd994c568acdedfc40ec673f7a
+      Events:
+        Demo:
+          Properties:
+            Method: get
+            Path: /hello
+          Type: Api
+      Handler: app.lambda_handler
+      Role:
+        Fn::GetAtt:
+        - LambdaRole
+        - Arn
+      Runtime: python2.7
+    Type: AWS::Serverless::Function
+  LambdaRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+        Version: 2012-10-17
+      ManagedPolicyArns:
+      - arn:aws:iam::aws:policy/AWSLambdaExecute
+      - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+      - arn:aws:iam::aws:policy/AmazonKinesisFullAccess
+      Path: /
+      RoleName:
+        Fn::Sub: lambda-role
+    Type: AWS::IAM::Role
+  apiGateway:
+    Properties:
+      Description: My API
+      Name: my-api
+    Type: AWS::ApiGateway::RestApi
+  apiGatewayDeployment:
+    DependsOn:
+    - apiGatewayRootMethod
+    Properties:
+      RestApiId:
+        Ref: apiGateway
+      StageName:
+        Ref: apiGatewayStageName
+    Type: AWS::ApiGateway::Deployment
+  apiGatewayGETDeployment:
+    DependsOn:
+    - apiGatewayGETMethod
+    Properties:
+      RestApiId:
+        Ref: apiGateway
+      StageName:
+        Ref: apiGatewayStageName
+    Type: AWS::ApiGateway::Deployment
+  apiGatewayGETMethod:
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Sub:
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn:
+              Fn::GetAtt:
+              - lambdaFunction
+              - Arn
+      ResourceId:
+        Fn::GetAtt:
+        - apiGateway
+        - RootResourceId
+      RestApiId:
+        Ref: apiGateway
+    Type: AWS::ApiGateway::Method
+  apiGatewayRootMethod:
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri:
+          Fn::Sub:
+          - arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations
+          - lambdaArn:
+              Fn::GetAtt:
+              - lambdaFunction
+              - Arn
+      ResourceId:
+        Fn::GetAtt:
+        - apiGateway
+        - RootResourceId
+      RestApiId:
+        Ref: apiGateway
+    Type: AWS::ApiGateway::Method
+  lambdaApiGatewayGETInvoke:
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+        - lambdaFunction
+        - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/GET/
+    Type: AWS::Lambda::Permission
+  lambdaApiGatewayInvoke:
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName:
+        Fn::GetAtt:
+        - lambdaFunction
+        - Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn:
+        Fn::Sub: arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${apiGateway}/*/POST/
+    Type: AWS::Lambda::Permission
+  lambdaFunction:
+    Properties:
+      CodeUri: s3://cloud-stack-demo/9fdc2f9b965c2256e34509ef15752f44
+      Description: My function
+      FunctionName:
+        Ref: lambdaFunctionName
+      Handler: app.lambda_handler
+      MemorySize: 128
+      Role:
+        Fn::GetAtt:
+        - lambdaIAMRole
+        - Arn
+      Runtime: python2.7
+      Timeout: 10
+    Type: AWS::Serverless::Function
+  lambdaIAMRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action:
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+        Version: '2012-10-17'
+      Policies:
+      - PolicyDocument:
+          Statement:
+          - Action:
+            - logs:CreateLogGroup
+            - logs:CreateLogStream
+            - logs:PutLogEvents
+            Effect: Allow
+            Resource:
+            - Fn::Sub: arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${lambdaFunctionName}:*
+          Version: '2012-10-17'
+        PolicyName: lambda
+    Type: AWS::IAM::Role
+  lambdaLogGroup:
+    Properties:
+      LogGroupName:
+        Fn::Sub: /aws/lambda/${lambdaFunctionName}
+      RetentionInDays: 90
+    Type: AWS::Logs::LogGroup
+Transform: AWS::Serverless-2016-10-31
